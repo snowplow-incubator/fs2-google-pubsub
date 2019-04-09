@@ -51,6 +51,6 @@ private[pubsub] class DefaultPublisher[F[_], A: MessageEncoder](
     }
   }
   
-  override def produceMany[G[_]: Traverse](records: G[Model.Record[A]])(implicit fk: List ~> G): F[G[String]] =
+  override def produceMany[G[_]: Traverse](records: G[Model.Record[A]])(implicit fk: Vector ~> G): F[G[String]] =
     records.traverse(r => produce(r.value, r.metadata, r.uniqueId))
 }

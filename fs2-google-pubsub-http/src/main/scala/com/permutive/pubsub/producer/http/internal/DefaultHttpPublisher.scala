@@ -6,7 +6,7 @@ import alleycats.syntax.foldable._
 import cats.arrow.FunctionK
 import cats.effect._
 import cats.effect.concurrent.Ref
-import cats.instances.list._
+import cats.instances.vector._
 import cats.syntax.all._
 import cats.{Foldable, Traverse, `~>`}
 import com.github.plokhotnyuk.jsoniter_scala.core._
@@ -40,10 +40,10 @@ private[http] class DefaultHttpPublisher[F[_], A: MessageEncoder] private(
   private[this] final val publishRoute = baseApiUrl.copy(path = baseApiUrl.path.concat(":publish"))
 
   override final def produce(record: A, metadata: Map[String, String], uniqueId: String): F[String] = {
-    produceMany[List](List(Model.SimpleRecord(record, metadata, uniqueId))).map(_.head)
+    produceMany[Vector](Vector(Model.SimpleRecord(record, metadata, uniqueId))).map(_.head)
   }
 
-  override final def produceMany[G[_]: Traverse](records: G[Model.Record[A]])(implicit fk: List ~> G): F[G[String]] = {
+  override final def produceMany[G[_]: Traverse](records: G[Model.Record[A]])(implicit fk: Vector ~> G): F[G[String]] = {
     for {
       msgs <- records.traverse(recordToMessage)
       json <- F.delay(writeToArray(MessageBundle(msgs)))
@@ -51,7 +51,7 @@ private[http] class DefaultHttpPublisher[F[_], A: MessageEncoder] private(
     } yield resp
   }
 
-  private def sendHttpRequest[G[_]](json: Array[Byte])(implicit fk: List ~> G): F[G[String]] = {
+  private def sendHttpRequest[G[_]](json: Array[Byte])(implicit fk: Vector ~> G): F[G[String]] = {
     for {
       token <- tokenRef.get
       req   <- POST(
@@ -173,25 +173,25 @@ private[http] object DefaultHttpPublisher {
   final implicit def messageBundleCodec[G[_] : Foldable]: JsonValueCodec[MessageBundle[G]] =
     JsonCodecMaker.make[MessageBundle[G]](CodecMakerConfig())
 
-  final implicit def MessageIdsCodec[G[_]](implicit fk: List ~> G): JsonValueCodec[MessageIds[G]] =
+  final implicit def MessageIdsCodec[G[_]](implicit fk: Vector ~> G): JsonValueCodec[MessageIds[G]] =
     new JsonValueCodec[MessageIds[G]] {
       override def decodeValue(in: JsonReader, default: MessageIds[G]): MessageIds[G] =
-        MessageIds(fk(messageIdsListCodec.decodeValue(in, emptyListMessageIds).messageIds))
+        MessageIds(fk(messageIdsVectorCodec.decodeValue(in, emptyVectorMessageIds).messageIds))
 
       override def nullValue: MessageIds[G] =
-        MessageIds(fk(List.empty))
+        MessageIds(fk(Vector.empty))
 
       override def encodeValue(x: MessageIds[G], out: JsonWriter): Unit = ???  // Not needed
     }
 
-  final implicit val listToChunk: List ~> Chunk = FunctionK.lift(Chunk.iterable)
-  final implicit val listToList: List ~> List = FunctionK.id
+  final implicit val vectorToChunk: Vector ~> Chunk = FunctionK.lift(Chunk.vector)
+  final implicit val vectorToVector: Vector ~> Vector = FunctionK.id
 
-  private[this] val emptyListMessageIds: MessageIds[List] =
-    MessageIds[List](List.empty)
+  private[this] val emptyVectorMessageIds: MessageIds[Vector] =
+    MessageIds[Vector](Vector.empty)
 
-  private[this] val messageIdsListCodec: JsonValueCodec[MessageIds[List]] =
-    JsonCodecMaker.make[MessageIds[List]](CodecMakerConfig())
+  private[this] val messageIdsVectorCodec: JsonValueCodec[MessageIds[Vector]] =
+    JsonCodecMaker.make[MessageIds[Vector]](CodecMakerConfig())
 
   case class FailedRequestToPubsub(response: String) extends Throwable(s"Failed request to pubsub. Response was: $response") with NoStackTrace
 }
