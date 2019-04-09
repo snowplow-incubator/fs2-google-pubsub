@@ -7,6 +7,7 @@ import cats.syntax.all._
 import com.permutive.pubsub.producer.encoder.MessageEncoder
 import com.permutive.pubsub.producer.http.BatchingHttpProducerConfig
 import com.permutive.pubsub.producer.http.BatchingHttpPubsubProducer.Batch
+import com.permutive.pubsub.producer.http.internal.DefaultHttpPublisher._
 import com.permutive.pubsub.producer.{AsyncPubsubProducer, Model, PubsubProducer}
 import fs2.Chunk._
 import fs2.concurrent.{Enqueue, Queue}

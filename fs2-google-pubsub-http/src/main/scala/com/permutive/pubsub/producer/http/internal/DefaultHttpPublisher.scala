@@ -3,11 +3,12 @@ package com.permutive.pubsub.producer.http.internal
 import java.util.Base64
 
 import alleycats.syntax.foldable._
+import cats.arrow.FunctionK
 import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.instances.list._
 import cats.syntax.all._
-import cats.{Foldable, Traverse}
+import cats.{Foldable, Traverse, `~>`}
 import com.github.plokhotnyuk.jsoniter_scala.core._
 import com.github.plokhotnyuk.jsoniter_scala.macros._
 import com.permutive.pubsub.http.oauth.{AccessToken, DefaultTokenProvider}
@@ -15,7 +16,7 @@ import com.permutive.pubsub.http.util.RefreshableRef
 import com.permutive.pubsub.producer.encoder.MessageEncoder
 import com.permutive.pubsub.producer.http.PubsubHttpProducerConfig
 import com.permutive.pubsub.producer.{Model, PubsubProducer}
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import io.chrisdavenport.log4cats.Logger
 import org.http4s.Method._
 import org.http4s.Uri._
@@ -42,15 +43,15 @@ private[http] class DefaultHttpPublisher[F[_], A: MessageEncoder] private(
     produceMany[List](List(Model.SimpleRecord(record, metadata, uniqueId))).map(_.head)
   }
 
-  override final def produceMany[G[_]: Traverse](records: G[Model.Record[A]]): F[List[String]] = {
+  override final def produceMany[G[_]: Traverse](records: G[Model.Record[A]])(implicit fk: List ~> G): F[G[String]] = {
     for {
       msgs <- records.traverse(recordToMessage)
       json <- F.delay(writeToArray(MessageBundle(msgs)))
-      resp <- sendHttpRequest(json)
+      resp <- sendHttpRequest[G](json)
     } yield resp
   }
 
-  private def sendHttpRequest(json: Array[Byte]): F[List[String]] = {
+  private def sendHttpRequest[G[_]](json: Array[Byte])(implicit fk: List ~> G): F[G[String]] = {
     for {
       token <- tokenRef.get
       req   <- POST(
@@ -59,7 +60,7 @@ private[http] class DefaultHttpPublisher[F[_], A: MessageEncoder] private(
         `Content-Type`(MediaType.application.json)
       )
       resp  <- client.expectOr[Array[Byte]](req)(onError)
-      resp  <- F.delay(readFromArray[MessageIds](resp))
+      resp  <- F.delay(readFromArray[MessageIds[G]](resp))
     } yield resp.messageIds
   }
 
@@ -148,8 +149,8 @@ private[http] object DefaultHttpPublisher {
     messages: G[Message],
   )
 
-  case class MessageIds(
-    messageIds: List[String],
+  case class MessageIds[G[_]](
+    messageIds: G[String],
   )
 
   final implicit def foldableMessagesCodec[G[_]](implicit G: Foldable[G]): JsonValueCodec[G[Message]] =
@@ -172,8 +173,25 @@ private[http] object DefaultHttpPublisher {
   final implicit def messageBundleCodec[G[_] : Foldable]: JsonValueCodec[MessageBundle[G]] =
     JsonCodecMaker.make[MessageBundle[G]](CodecMakerConfig())
 
-  final implicit val MessageIdsCodec: JsonValueCodec[MessageIds] =
-    JsonCodecMaker.make[MessageIds](CodecMakerConfig())
+  final implicit def MessageIdsCodec[G[_]](implicit fk: List ~> G): JsonValueCodec[MessageIds[G]] =
+    new JsonValueCodec[MessageIds[G]] {
+      override def decodeValue(in: JsonReader, default: MessageIds[G]): MessageIds[G] =
+        MessageIds(fk(messageIdsListCodec.decodeValue(in, emptyListMessageIds).messageIds))
+
+      override def nullValue: MessageIds[G] =
+        MessageIds(fk(List.empty))
+
+      override def encodeValue(x: MessageIds[G], out: JsonWriter): Unit = ???  // Not needed
+    }
+
+  final implicit val listToChunk: List ~> Chunk = FunctionK.lift(Chunk.iterable)
+  final implicit val listToList: List ~> List = FunctionK.id
+
+  private[this] val emptyListMessageIds: MessageIds[List] =
+    MessageIds[List](List.empty)
+
+  private[this] val messageIdsListCodec: JsonValueCodec[MessageIds[List]] =
+    JsonCodecMaker.make[MessageIds[List]](CodecMakerConfig())
 
   case class FailedRequestToPubsub(response: String) extends Throwable(s"Failed request to pubsub. Response was: $response") with NoStackTrace
 }

@@ -2,7 +2,7 @@ package com.permutive.pubsub.producer
 
 import java.util.UUID
 
-import cats.Traverse
+import cats.{Traverse, `~>`}
 
 trait PubsubProducer[F[_], A] {
   def produce(
@@ -11,5 +11,5 @@ trait PubsubProducer[F[_], A] {
     uniqueId: String = UUID.randomUUID().toString,
   ): F[String]
 
-  def produceMany[G[_] : Traverse](records: G[Model.Record[A]]): F[List[String]]
+  def produceMany[G[_] : Traverse](records: G[Model.Record[A]])(implicit fk: List ~> G): F[G[String]]
 }
