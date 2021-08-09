@@ -2,7 +2,7 @@ name: Snyk
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, release/0.18.0 ]
 
 jobs:
   snyk:
