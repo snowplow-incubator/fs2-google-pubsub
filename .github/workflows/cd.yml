@@ -1,0 +1,58 @@
+name: CD
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  cd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: coursier/cache-action@v5
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v1
+        with:
+          java-version: 8
+
+      - name: Publish common_2.12 to Sonatype
+        run: |
+          sbt "project common" clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish grpc_2.12 to Sonatype
+        run: |
+          sbt "project grpc" clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish common_2.13 to Sonatype
+        run: |
+          sbt "project common" ++2.13.5! clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish grpc_2.13 to Sonatype
+        run: |
+          sbt "project grpc" ++2.13.5! clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
