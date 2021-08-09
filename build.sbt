@@ -5,7 +5,7 @@ def priorTo2_13(scalaVersion: String): Boolean =
   }
 
 lazy val commonSettings = Seq(
-  organization := "com.permutive",
+  organization := "com.snowplowanalytics",
   scalaVersion := Dependencies.Versions.scala212,
   crossScalaVersions := Seq(Dependencies.Versions.scala212, Dependencies.Versions.scala213),
   javacOptions in (Compile, compile) ++= Seq("-source", "1.8", "-target", "1.8"),
@@ -56,7 +56,7 @@ lazy val commonSettings = Seq(
     "-opt-inline-from:com.permutive.**",
     "-opt-warnings",
     // Lint after expansion so that implicits used in macros are not flagged as unused
-    "-Ywarn-macros:after",
+    "-Ywarn-macros:after"
   ),
   scalacOptions ++= {
     if (priorTo2_13(scalaVersion.value))
@@ -70,11 +70,11 @@ lazy val commonSettings = Seq(
         "-Ywarn-nullary-unit",              // Warn when nullary methods return Unit.
         "-Xlint:by-name-right-associative", // By-name parameter of right associative operator.
         "-Xlint:unsound-match",             // Pattern match may not be typesafe.
-        "-Xfuture",                         // Turn on future language features.
+        "-Xfuture"                          // Turn on future language features.
       )
     else
       Seq(
-        "-Ymacro-annotations",
+        "-Ymacro-annotations"
       )
   }
 )
@@ -85,7 +85,7 @@ lazy val common = (project in file("fs2-google-pubsub"))
     commonSettings,
     publishSettings,
     libraryDependencies ++= Dependencies.commonDependencies,
-    libraryDependencies ++= Dependencies.testsDependencies,
+    libraryDependencies ++= Dependencies.testsDependencies
   )
 
 lazy val http = (project in file("fs2-google-pubsub-http"))
@@ -95,7 +95,7 @@ lazy val http = (project in file("fs2-google-pubsub-http"))
     commonSettings,
     publishSettings,
     libraryDependencies ++= Dependencies.httpDependencies,
-    libraryDependencies ++= Dependencies.testsDependencies,
+    libraryDependencies ++= Dependencies.testsDependencies
   )
 
 lazy val grpc = (project in file("fs2-google-pubsub-grpc"))
@@ -105,7 +105,7 @@ lazy val grpc = (project in file("fs2-google-pubsub-grpc"))
     commonSettings,
     publishSettings,
     libraryDependencies ++= Dependencies.grpcDependencies,
-    libraryDependencies ++= Dependencies.testsDependencies,
+    libraryDependencies ++= Dependencies.testsDependencies
   )
 
 lazy val root = (project in file("."))
@@ -114,7 +114,7 @@ lazy val root = (project in file("."))
     scalaVersion := Dependencies.Versions.scala212,
     commonSettings,
     publishSettings,
-    publish / skip := true,
+    publish / skip := true
   )
   .aggregate(
     common,
@@ -122,35 +122,21 @@ lazy val root = (project in file("."))
     grpc
   )
 
-lazy val publishSettings = Seq(
-  releaseCrossBuild := true,
-  releaseVcsSign := true,
-  releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-  homepage := Some(url("https://github.com/permutive/fs2-google-pubsub")),
-  licenses := Seq("Apache 2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-  publishMavenStyle := true,
-  publishArtifact in Test := false,
-  pomIncludeRepository := { _ =>
-    false
-  },
-  publishTo := {
-    val nexus = "https://oss.sonatype.org/"
-    if (isSnapshot.value)
-      Some("snapshots".at(nexus + "content/repositories/snapshots"))
-    else
-      Some("releases".at(nexus + "service/local/staging/deploy/maven2"))
-  },
-  autoAPIMappings := true,
-  scmInfo := Some(
-    ScmInfo(
-      url("https://github.com/permutive/fs2-google-pubsub"),
-      "scm:git:git@github.com:permutive/fs2-google-pubsub.git"
-    )
-  ),
+lazy val publishSettings = Seq[Setting[_]](
+  publishArtifact := true,
+  pomIncludeRepository := { _ => false },
+  ThisBuild / dynverVTagPrefix := false,      // Otherwise git tags required to have v-prefix
+  organization := "com.snowplowanalytics",
+  homepage := Some(url("https://snowplowanalytics.com")),
+  licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+  scmInfo := Some(ScmInfo(url("https://github.com/snowplow-incubator/fs2-google-pubsub"), "scm:git@github.com:snowplow-incubator/fs2-google-pubsub.git")),
+  Test / publishArtifact := false,
   developers := List(
-    Developer("cremboc", "Paulius Imbrasas", "", url("https://github.com/cremboc")),
-    Developer("TimWSpence", "Tim Spence", "", url("https://github.com/TimWSpence")),
-    Developer("bastewart", "Ben Stewart", "", url("https://github.com/bastewart")),
-    Developer("travisbrown", "Travis Brown", "", url("https://twitter.com/travisbrown"))
+    Developer(
+      "Snowplow Analytics Ltd",
+      "Snowplow Analytics Ltd",
+      "support@snowplowanalytics.com",
+      url("https://snowplowanalytics.com")
+    )
   )
 )
