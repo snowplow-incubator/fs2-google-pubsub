@@ -114,7 +114,8 @@ lazy val root = (project in file("."))
     scalaVersion := Dependencies.Versions.scala212,
     commonSettings,
     publishSettings,
-    publish / skip := true
+    publish / skip := true,
+    crossScalaVersions := Nil
   )
   .aggregate(
     common,
