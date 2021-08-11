@@ -29,8 +29,38 @@ jobs:
 
       - name: Publish artifacts to Sonatype
         run: |
-          sbt "project common" clean +ci-release
-          sbt "project grpc" clean +ci-release
+          sbt "project common" clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish artifacts to Sonatype
+        run: |
+          sbt "project grpc" clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish artifacts to Sonatype
+        run: |
+          sbt "project common" ++2.13.5! clean ci-release
+        continue-on-error: true
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - name: Publish artifacts to Sonatype
+        run: |
+          sbt "project grpc" ++2.13.5! clean ci-release
+        continue-on-error: true
         env:
           PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
           PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
