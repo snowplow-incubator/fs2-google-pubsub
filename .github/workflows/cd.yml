@@ -27,7 +27,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: sbt "project grpc" clean +ci-release
+      - run: sbt "project grpc" clean ci-release
+        env:
+          PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONA_PASS }}
+          SONATYPE_USERNAME: ${{ secrets.SONA_USER }}
+
+      - run: sbt "project grpc" ++2.13.5! clean sonatypeBundleClean ci-release
         env:
           PGP_PASSPHRASE: ${{ secrets.SONA_PGP_PASSPHRASE }}
           PGP_SECRET: ${{ secrets.SONA_PGP_SECRET }}
