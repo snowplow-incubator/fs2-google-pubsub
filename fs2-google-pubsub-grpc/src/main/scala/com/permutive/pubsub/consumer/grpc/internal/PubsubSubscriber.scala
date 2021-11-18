@@ -1,7 +1,7 @@
 package com.permutive.pubsub.consumer.grpc.internal
 
-import cats.effect.{Blocker, ContextShift, Resource, Sync}
 import cats.Applicative
+import cats.effect.{Blocker, ContextShift, Resource, Sync}
 import cats.syntax.all._
 import com.google.api.core.ApiService
 import com.google.api.gax.batching.FlowControlSettings
@@ -11,10 +11,12 @@ import com.google.pubsub.v1.{ProjectSubscriptionName, PubsubMessage}
 import com.permutive.pubsub.consumer.grpc.PubsubGoogleConsumer.InternalPubSubError
 import com.permutive.pubsub.consumer.grpc.PubsubGoogleConsumerConfig
 import com.permutive.pubsub.consumer.{Model => PublicModel}
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import org.threeten.bp.Duration
+import collection.JavaConverters._
 
 import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
+import java.util.ArrayList
 
 private[consumer] object PubsubSubscriber {
 
@@ -70,25 +72,29 @@ private[consumer] object PubsubSubscriber {
       queue.put(Left(InternalPubSubError(failure)))
   }
 
-  def takeNextElement[F[_]: Sync: ContextShift, A](messages: BlockingQueue[A], blocker: Blocker): F[A] =
+  def takeNextElements[F[_]: Sync: ContextShift, A](messages: BlockingQueue[A], blocker: Blocker): F[List[A]] =
     for {
       nextOpt <- Sync[F].delay(Option(messages.poll())) // `poll` is non-blocking, returning `null` if queue is empty
       next    <- nextOpt.fold(blocker.delay(messages.take()))(Applicative[F].pure) // `take` can wait for an element
-    } yield next
+      more    <- Sync[F].delay(new ArrayList[A])
+      _       <- Sync[F].delay(messages.drainTo(more))
+    } yield next :: more.asScala.toList
 
   def subscribe[F[_]: Sync: ContextShift](
     blocker: Blocker,
     projectId: PublicModel.ProjectId,
     subscription: PublicModel.Subscription,
     config: PubsubGoogleConsumerConfig[F],
-  ): Stream[F, Model.Record[F]] =
-    for {
-
+  ): Stream[F, Model.Record[F]] = {
+    val chunked = for {
       queue <- Stream.eval(
         Sync[F].delay(new LinkedBlockingQueue[Either[InternalPubSubError, Model.Record[F]]](config.maxQueueSize))
       )
-      _    <- Stream.resource(PubsubSubscriber.createSubscriber(projectId, subscription, config, queue, blocker))
-      next <- Stream.repeatEval(takeNextElement(queue, blocker))
-      msg  <- Stream.fromEither[F](next)
-    } yield msg
+      _     <- Stream.resource(PubsubSubscriber.createSubscriber(projectId, subscription, config, queue, blocker))
+      taken <- Stream.repeatEval(takeNextElements(queue, blocker))
+      chunk <- Stream.fromEither[F](taken.sequence)
+    } yield Chunk.seq(chunk)
+
+    chunked.flatMap(Stream.chunk)
+  }
 }
