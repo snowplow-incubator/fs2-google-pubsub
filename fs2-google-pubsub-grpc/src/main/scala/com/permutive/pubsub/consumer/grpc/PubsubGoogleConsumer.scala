@@ -41,13 +41,16 @@ object PubsubGoogleConsumer {
   ): Stream[F, ConsumerRecord[F, A]] =
     PubsubSubscriber
       .subscribe(blocker, projectId, subscription, config)
-      .flatMap { case internal.Model.Record(msg, ack, nack) =>
+      .evalMapChunk[F, Option[ConsumerRecord[F, A]]] { case internal.Model.Record(msg, ack, nack) =>
         MessageDecoder[A].decode(msg.getData.toByteArray) match {
-          case Left(e) => Stream.eval_(errorHandler(msg, e, ack, nack))
+          case Left(e) => errorHandler(msg, e, ack, nack).as(None)
           case Right(v) =>
-            Stream.emit(ConsumerRecord(v, msg.getAttributesMap.asScala.toMap, ack, nack, _ => Applicative[F].unit))
+            Sync[F].pure(
+              Some(ConsumerRecord(v, msg.getAttributesMap.asScala.toMap, ack, nack, _ => Applicative[F].unit))
+            )
         }
       }
+      .unNone
 
   /**
     * Subscribe with automatic acknowledgement
