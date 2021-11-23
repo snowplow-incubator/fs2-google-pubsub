@@ -72,14 +72,19 @@ private[consumer] object PubsubSubscriber {
       queue.put(Left(InternalPubSubError(failure)))
   }
 
-  def takeNextElement[F[_]: Sync: ContextShift, A](messages: BlockingQueue[A], blocker: Blocker): F[A] =
+  def takeNextElements[F[_]: Sync: ContextShift, A](messages: BlockingQueue[A], blocker: Blocker): F[Chunk[A]] =
     for {
-      nextOpt  <- Sync[F].delay(Option(messages.poll())) // `poll` is non-blocking, returning `null` if queue is empty
-      next     <- nextOpt.fold(blocker.delay(messages.take()))(Applicative[F].pure) // `take` can wait for an element
-      elements <- Sync[F].delay(new util.ArrayList[A])
-      _        <- Sync[F].delay(elements.add(next))
-      _        <- Sync[F].delay(messages.drainTo(elements))
-    } yield Chunk.buffer(elements.asScala)
+      nextOpt <- Sync[F].delay(messages.poll()) // `poll` is non-blocking, returning `null` if queue is empty
+      // `take` can wait for an element
+      next <- if (nextOpt == null) blocker.delay(messages.take()) else Applicative[F].pure(nextOpt)
+      chunk <- blocker.delay {
+        val elements = new util.ArrayList[A]
+        elements.add(next)
+        messages.drainTo(elements)
+
+        Chunk.buffer(elements.asScala)
+      }
+    } yield chunk
 
   def subscribe[F[_]: Sync: ContextShift](
     blocker: Blocker,
