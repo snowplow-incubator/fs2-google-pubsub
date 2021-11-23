@@ -39,15 +39,23 @@ object PubsubGoogleConsumer {
     errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit],
     config: PubsubGoogleConsumerConfig[F]
   ): Stream[F, ConsumerRecord[F, A]] =
-    PubsubSubscriber
-      .subscribe(blocker, projectId, subscription, config)
-      .flatMap { case internal.Model.Record(msg, ack, nack) =>
-        MessageDecoder[A].decode(msg.getData.toByteArray) match {
-          case Left(e) => Stream.eval_(errorHandler(msg, e, ack, nack))
-          case Right(v) =>
-            Stream.emit(ConsumerRecord(v, msg.getAttributesMap.asScala.toMap, ack, nack, _ => Applicative[F].unit))
-        }
-      }
+    subscribeDecode[F, A, ConsumerRecord[F, A]](
+      blocker,
+      projectId,
+      subscription,
+      errorHandler,
+      config,
+      onDecode = (record, value) =>
+        Applicative[F].pure(
+          ConsumerRecord(
+            value,
+            record.value.getAttributesMap.asScala.toMap,
+            record.ack,
+            record.nack,
+            _ => Applicative[F].unit
+          )
+        ),
+    )
 
   /**
     * Subscribe with automatic acknowledgement
@@ -65,14 +73,14 @@ object PubsubGoogleConsumer {
     errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit],
     config: PubsubGoogleConsumerConfig[F]
   ): Stream[F, A] =
-    PubsubSubscriber
-      .subscribe(blocker, projectId, subscription, config)
-      .flatMap { case internal.Model.Record(msg, ack, nack) =>
-        MessageDecoder[A].decode(msg.getData.toByteArray) match {
-          case Left(e)  => Stream.eval_(errorHandler(msg, e, ack, nack))
-          case Right(v) => Stream.eval(ack >> v.pure)
-        }
-      }
+    subscribeDecode[F, A, A](
+      blocker,
+      projectId,
+      subscription,
+      errorHandler,
+      config,
+      onDecode = (record, value) => record.ack.as(value),
+    )
 
   /**
     * Subscribe to the raw stream, receiving the the message as retrieved from PubSub
@@ -89,5 +97,22 @@ object PubsubGoogleConsumer {
       .subscribe(blocker, projectId, subscription, config)
       .map(msg =>
         ConsumerRecord(msg.value, msg.value.getAttributesMap.asScala.toMap, msg.ack, msg.nack, _ => Applicative[F].unit)
+      )
+
+  private def subscribeDecode[F[_]: Sync: ContextShift, A: MessageDecoder, B](
+    blocker: Blocker,
+    projectId: Model.ProjectId,
+    subscription: Model.Subscription,
+    errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit],
+    config: PubsubGoogleConsumerConfig[F],
+    onDecode: (internal.Model.Record[F], A) => F[B],
+  ): Stream[F, B] =
+    PubsubSubscriber
+      .subscribe(blocker, projectId, subscription, config)
+      .flatMap(record =>
+        MessageDecoder[A].decode(record.value.getData.toByteArray) match {
+          case Left(e)  => Stream.exec(errorHandler(record.value, e, record.ack, record.ack))
+          case Right(v) => Stream.eval(onDecode(record, v))
+        }
       )
 }
