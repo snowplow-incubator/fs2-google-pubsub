@@ -11,9 +11,11 @@ import com.google.pubsub.v1.{ProjectSubscriptionName, PubsubMessage}
 import com.permutive.pubsub.consumer.grpc.PubsubGoogleConsumer.InternalPubSubError
 import com.permutive.pubsub.consumer.grpc.PubsubGoogleConsumerConfig
 import com.permutive.pubsub.consumer.{Model => PublicModel}
-import fs2.Stream
+import fs2.{Chunk, Stream}
 import org.threeten.bp.Duration
 
+import java.util
+import collection.JavaConverters._
 import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue, TimeUnit}
 
 private[consumer] object PubsubSubscriber {
@@ -72,9 +74,12 @@ private[consumer] object PubsubSubscriber {
 
   def takeNextElement[F[_]: Sync: ContextShift, A](messages: BlockingQueue[A], blocker: Blocker): F[A] =
     for {
-      nextOpt <- Sync[F].delay(Option(messages.poll())) // `poll` is non-blocking, returning `null` if queue is empty
-      next    <- nextOpt.fold(blocker.delay(messages.take()))(Applicative[F].pure) // `take` can wait for an element
-    } yield next
+      nextOpt  <- Sync[F].delay(Option(messages.poll())) // `poll` is non-blocking, returning `null` if queue is empty
+      next     <- nextOpt.fold(blocker.delay(messages.take()))(Applicative[F].pure) // `take` can wait for an element
+      elements <- Sync[F].delay(new util.ArrayList[A])
+      _        <- Sync[F].delay(elements.add(next))
+      _        <- Sync[F].delay(messages.drainTo(elements))
+    } yield Chunk.buffer(elements.asScala)
 
   def subscribe[F[_]: Sync: ContextShift](
     blocker: Blocker,
@@ -87,8 +92,10 @@ private[consumer] object PubsubSubscriber {
       queue <- Stream.eval(
         Sync[F].delay(new LinkedBlockingQueue[Either[InternalPubSubError, Model.Record[F]]](config.maxQueueSize))
       )
-      _    <- Stream.resource(PubsubSubscriber.createSubscriber(projectId, subscription, config, queue, blocker))
-      next <- Stream.repeatEval(takeNextElement(queue, blocker))
-      msg  <- Stream.fromEither[F](next)
+      _     <- Stream.resource(PubsubSubscriber.createSubscriber(projectId, subscription, config, queue, blocker))
+      taken <- Stream.repeatEval(takeNextElements(queue, blocker))
+      // Only retains the first error (if there are multiple), but that is OK, the stream is failing anyway...
+      chunk <- Stream.fromEither[F](taken.sequence)
+      msg   <- Stream.chunk(chunk)
     } yield msg
 }
